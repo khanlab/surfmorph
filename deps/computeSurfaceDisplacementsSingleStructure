@@ -1,0 +1,413 @@
+#!/bin/bash
+
+# takes a surfdisp cfg file in , e.g.: ~/vasst-dev-local/pipeline/cfg/surf_disp/hippAmyg.cfg
+
+
+#config file will set:
+
+#surfdisp_name=   #name of config file (for creating output dir)
+#template_4d=  #path to template 4D seg  (absolute path) -- could potentially be MNI atlas 
+#
+#index_list=		#label list file for selecting what channels to use
+#			#name,index (into 4D image)
+# optional (template_index_list, target_index_list)
+#target_4d_path=   #path to 4D segmentations (will be prepended with subjid)
+#resample_res=  #isotropic resolution to resample images
+#isothreshold=  #threshold for generating isosurface
+#genpbs_opts=  #options for generatePBSfluidmatch
+		#presmoothing??
+
+
+
+
+# provide segs that are already coregistered to some common (e.g. MNI152_1mm) space
+
+
+
+function usage {
+ echo "Usage $0 <subjid/list> <config_file> <options>"
+ echo "   -o output_dir		Set output directory (default .)"
+ echo "   -t 			Run template job only"
+ echo "   -N			Do not perform rigid registration"
+ echo ""
+}
+
+if [ "$#" -lt 2 ]
+then
+ usage
+ exit 0
+fi
+
+output_dir=.
+
+if [ -f $1 ]
+then
+ subjids=`cat $1`
+else
+ subjids=$1
+fi  
+
+shift 1 #shift by number of required arguments (incl subjid/list)
+
+cfg_file=$1
+if [ -f $1 ]
+then
+  source $cfg_file
+else
+  if [ -f $PIPELINE_CFG_DIR/surf_disp/$1 ]
+  then
+   source $PIPELINE_CFG_DIR/surf_disp/$1 
+  else
+  echo "config file doesn't exist!"
+  exit 0
+  fi
+fi
+ 
+shift 1
+
+template_only=0
+no_reg=0
+
+#flag o with argument "o:"
+while getopts "o:tN" options; do
+ case $options in
+    o ) echo "Using output directory: $OPTARG"
+	output_dir=$OPTARG;;
+    t ) echo "Running template job only"
+ 	template_only=1;;
+    N ) echo "Disabling rigid reg"
+	no_reg=1;;
+    * ) usage
+	exit 0;;
+ esac
+done
+
+
+out_dir=surfdisp_singlestruct_$surfdisp_name
+mkdir -p $out_dir
+out_dir=`realpath $out_dir`
+
+
+
+#prep template seg
+template_dir=$out_dir/template
+mkdir -p $template_dir
+
+if [ ! -e $template_4d ]
+then
+ echo "template 4D seg does not exist!"
+ exit 0
+fi
+
+#read index_list to pull out indices of interest
+#pull out indices of interest
+if [ -n "$template_index_list" ]
+then
+  echo template_index_list defined
+  t_index_list=$template_index_list
+else
+  echo template_index_list not defined, using index_list
+  t_index_list=$index_list
+fi
+
+for line in `cat $t_index_list`
+do
+ 
+ struct=${line%%,*}
+ index=${line##*,}
+
+ template_img_list=$template_dir/template_images.$struct.txt
+
+ echo line: $line
+ nii=$template_dir/$struct.nii.gz
+ ana=$template_dir/${struct}_ana.img
+
+ if [ ! -e $nii ]
+ then
+echo  fslroi $template_4d $nii $index 1
+  fslroi $template_4d $nii $index 1
+ fi
+ if [ ! -e $ana ]
+ then
+ echo mri_convert $nii $ana -vs $resample_res $resample_res $resample_res
+ mri_convert $nii $ana -vs $resample_res $resample_res $resample_res
+ fi
+
+
+
+#get crop params 
+paddim=20
+cropparam=$template_dir/${struct}_crop_param.txt
+zdiv=8 # divisibility for MPI parallel
+crop=$template_dir/${struct}_ana_crop.img 
+
+if [ ! -e $cropparam ]
+then
+echo CropImageToSegExtents $ana $ana $crop  $paddim $cropparam 
+CropImageToSegExtents $ana $ana $crop  $paddim $cropparam 
+fi
+
+
+
+
+ byu_noext=$template_dir/${struct}_ana_crop
+ byu=$template_dir/${struct}_ana_crop.byu
+ byu_cpp=$template_dir/${struct}_ana_crop_cpp.byu
+
+ if [ ! -e $byu_cpp ]
+ then
+ #create surfaces
+  echo AnalyzeToBYU  $crop $isothreshold $byu_noext
+  AnalyzeToBYU  $crop $isothreshold $byu_noext
+  echo ConvertBYU_BW-CPP $byu $byu_cpp `GetImageDims $crop`
+  ConvertBYU_BW-CPP $byu $byu_cpp `GetImageDims $crop`
+ fi
+
+ if [ ! -e $template_img_list ]
+ then
+ echo 1 > $template_img_list
+ echo $crop >> $template_img_list
+ fi
+
+
+
+ byu_nii_xfm=$template_dir/${struct}_byuToNifti.xfm
+
+ #create surfaces in template nifti space
+ if [ -e $nii -a -e $cropparam -a ! -e $byu_nii_xfm ]
+ then
+  echo runMatlabCmd genBYUtoNiftiTransformFromCroppedAnalyze "'$nii'" "'$cropparam'" "'$byu_nii_xfm'"
+ runMatlabCmd genBYUtoNiftiTransformFromCroppedAnalyze "'$nii'" "'$cropparam'" "'$byu_nii_xfm'"
+ fi
+
+ byu_niispace=$template_dir/${struct}_nii.byu
+ if [ ! -e $byu_niispace -a -e $byu_nii_xfm ]
+ then
+  echo runMatlabCmd  transformByuLinearXfm "'$byu_cpp'" "'$byu_nii_xfm'" "'$byu_niispace'"
+  runMatlabCmd  transformByuLinearXfm "'$byu_cpp'" "'$byu_nii_xfm'" "'$byu_niispace'"
+ fi
+
+done
+
+
+
+
+
+if [ "$template_only" = "1" ]
+then
+
+exit 0
+
+fi
+
+
+
+
+for subj in $subjids
+do
+
+
+subj_dir=$output_dir/$subj
+
+#put everything in the same surfdisp root dir
+target_dir=$out_dir/$subj
+mkdir -p $target_dir
+
+echo $subj
+#put pipeline commands here
+
+if [ -n "$target_index_list" ]
+then
+  t_index_list=$target_index_list
+else
+  t_index_list=$index_list
+fi
+
+#read index_list to pull out indices of interest
+#pull out indices of interest
+for line in `cat $t_index_list`
+do
+ 
+ struct=${line%%,*}
+ index=${line##*,}
+
+ nii=$target_dir/$struct.nii.gz
+
+ template_img_list=$template_dir/template_images.$struct.txt
+ target_img_list=$target_dir/target_images.$struct.txt
+ echo 1 > $target_img_list
+
+if [ ! -e $nii ]
+then 
+ fslroi $subj_dir/$target_4d_path $nii $index 1
+fi
+ 
+ template_nii=$template_dir/${struct}.nii.gz
+ reg=$target_dir/${struct}_reg.nii.gz
+
+ rigid_xfm=$target_dir/${struct}_to_template.xfm
+
+
+if [ "$no_reg" = "1" ]
+then
+  reg_suffix="_"
+else
+  reg_suffix="_reg_"
+fi
+
+
+ ana=$target_dir/${struct}${reg_suffix}ana.img
+ #perform registration to template 
+if [ "$no_reg" = "0" ]
+then
+
+if [ ! -e $rigid_xfm ]
+then
+ echo reg_aladin -flo $nii -ref $template_nii -res $reg -rigOnly -aff $rigid_xfm 
+ reg_aladin -flo $nii -ref $template_nii -res $reg -rigOnly -aff $rigid_xfm 
+fi
+
+
+if [ ! -e $ana ]
+then
+ mri_convert $reg $ana -vs $resample_res $resample_res $resample_res
+fi
+
+else
+ 
+
+if [ ! -e $ana ]
+then
+ mri_convert $nii $ana -vs $resample_res $resample_res $resample_res
+fi
+
+fi
+
+
+
+ 
+ crop=$target_dir/${struct}${reg_suffix}ana_crop.img 
+ cropparam=$template_dir/${struct}_crop_param.txt
+
+ if [ ! -e $crop ]
+ then
+ CropImage $ana `cat $cropparam` $crop
+ fi
+
+
+ byu_noext=$target_dir/${struct}${reg_suffix}ana_crop
+ byu=$target_dir/${struct}${reg_suffix}ana_crop.byu
+
+ #create surfaces
+  AnalyzeToBYU  $crop $isothreshold $byu_noext
+
+
+
+
+ #add to image list for lddmm
+ echo $crop >> $target_img_list
+
+ lddmm_dir=$target_dir/lddmm_${struct}
+ 
+ cmd=$lddmm_dir/cmd.pbs 
+
+ rm -f $cmd
+ #run lddmm
+ echo "runLDDMM -o "$genpbs_opts" $template_img_list $target_img_list $lddmm_dir"
+ runLDDMM -o "$genpbs_opts" $template_img_list $target_img_list $lddmm_dir
+
+ hmap=$lddmm_dir/Hmap.vtk 
+ kimap=$lddmm_dir/Kimap.vtk 
+
+
+#here, lddmm job can be submitted
+if [ ! -e $kimap ]
+ then
+ pushd $lddmm_dir
+ sh $cmd
+
+ gatherData Hmap Kimap
+  popd 
+fi
+
+ 
+ #surface and displacement processing
+
+ template_byu=$template_dir/${struct}_ana_crop.byu
+ template_byu_cpp=$template_dir/${struct}_ana_crop_cpp.byu
+
+ byu_nii_xfm=$template_dir/${struct}_byuToNifti.xfm
+
+
+ disp_csv=$target_dir/${struct}.surf_disp.csv
+ disp_txt=$target_dir/${struct}.surf_disp.txt
+ disp_vtk=$target_dir/templateSurface_${struct}_disp.vtk
+
+
+ prop_surf=$target_dir/propSurface_${struct}.byu
+ inout_txt=$target_dir/${struct}.surf_inout.txt
+ inout_vtk=$target_dir/templateSurface_${struct}_inout.vtk
+
+ prop_surf_template_nii=$target_dir/propSurface_${struct}_nii.byu
+ prop_surf_template_norm_nii=$target_dir/propSurface_${struct}_normalized_nii.byu
+ prop_surf_subj_nii=$target_dir/propSurface_${struct}_nii_regSubj.byu
+
+#if [ ! -e $disp_csv ]
+#then
+# #now compute surface vector displacements
+#echo GenSurfDisplacementTxt $template_byu_cpp $hmap $disp_csv
+# GenSurfDisplacementTxt $template_byu_cpp $hmap $disp_csv
+#fi
+
+if [ ! -e $prop_surf ]
+then
+ #propagate surface
+ echo TransformSurfaceWithMaps $template_byu_cpp $kimap $prop_surf
+ TransformSurfaceWithMaps $template_byu_cpp $kimap $prop_surf
+# echo ConvertBYU_BW-CPP $prop_surf $prop_surf `GetImageDims $crop`  #keep in cpp space
+# ConvertBYU_BW-CPP $prop_surf $prop_surf `GetImageDims $crop`  
+ fi
+
+ #generate inout displacements -- this is done in matlab now..
+
+#if [ ! -e $inout_txt ]
+#then
+# echo "compdisp $template_byu $prop_surf > $inout_txt"
+# compdisp $template_byu $prop_surf > $inout_txt
+#fi
+
+#if [ ! -e $inout_vtk ]
+#then
+# echo CombineBYUandSurfDist $template_byu $inout_txt $inout_vtk
+# CombineBYUandSurfDist $template_byu $inout_txt $inout_vtk
+#fi
+
+#if [ ! -e $disp_vtk ]
+#then
+# sed 's/,/\ /g' $disp_csv > $disp_txt
+# echo ConvertBYUandVectorDataToVTK $template_byu $disp_txt $disp_vtk
+# ConvertBYUandVectorDataToVTK $template_byu $disp_txt $disp_vtk
+#fi
+
+if [ ! -e $prop_surf_template_nii ]
+then
+ echo runMatlabCmd  transformByuLinearXfm "'$prop_surf'" "'$byu_nii_xfm'" "'$prop_surf_template_nii'"
+ runMatlabCmd  transformByuLinearXfm "'$prop_surf'" "'$byu_nii_xfm'" "'$prop_surf_template_nii'"
+fi
+
+
+if [ "$no_reg" = "0" -a ! -e $prop_surf_subj_nii ]
+then
+ echo runMatlabCmd  transformByuLinearXfm "'$prop_surf_template_nii'" "'$rigid_xfm'" "'$prop_surf_subj_nii'" "1"  # extra 1 is to invert, since the xfm is from subj to template, and we want template to subj
+ runMatlabCmd  transformByuLinearXfm "'$prop_surf_template_nii'" "'$rigid_xfm'" "'$prop_surf_subj_nii'" "1"
+fi
+
+
+runMatlabCmd generateNormalizedDisplacements "'$byu_niispace'" "'$prop_surf_template_nii'" "'$disp_txt'" "'$inout_txt'" "'$prop_surf_template_norm_nii'" "'$disp_vtk'" "'$inout_vtk'"
+
+done #structure
+
+
+
+done #subj
+

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+
+computeSurfaceDisplacementsSingleStructure template_placeholder  $parcellate_cfg -N -t
+
+exit 0

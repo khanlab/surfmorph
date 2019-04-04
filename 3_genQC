@@ -1,0 +1,38 @@
+#!/bin/bash
+
+function usage {
+ echo ""
+ echo "Usage: ${0##*/}  <working dir> <subjlist>"
+ echo "" 
+ 
+}
+
+if [ "$#" -lt 2 ]
+then
+ usage
+ exit 1
+fi
+
+
+execpath=`dirname $0`
+execpath=`realpath $execpath`
+
+
+work_dir=$1
+subjlist=$2
+
+subjlist=`realpath $subjlist`
+
+
+
+pushd $work_dir
+genOverlay_brainmask $subjlist
+
+for atlas in `ls -d $in_atlas_dir/*`
+do
+ atlas_name=${atlas##*/}
+ genOverlay_affine_atlasReg $atlas_name $subjlist
+ genOverlay_bspline_atlasReg $atlas_name $subjlist
+done
+
+popd
