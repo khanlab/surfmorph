@@ -45,9 +45,8 @@ if [ "$#" -lt 3 ]
 then
  echo "Usage: surfmorph bids_dir output_dir {participant,group} <optional arguments>"
  echo ""
- echo " Required arguments:"
- echo "          [--in_seg_dir SEG_DIR]" 
  echo " Optional arguments:"
+ echo "          [--in_seg_dir SEG_DIR]" 
  echo "          [--participant_label PARTICIPANT_LABEL [PARTICIPANT_LABEL...]]"
  echo "          [--matching_T1w MATCHING_STRING"
  echo "          [--reg_init_participant PARTICIPANT_LABEL"
@@ -263,18 +262,8 @@ subjlist=`tail -n +2 $participants | awk '{print $1}'`
 fi
 
 
-N_t1w=`eval ls $in_bids/$subj_sess_dir/anat/${subj_sess_prefix}${searchstring_t1w} | wc -l`
-in_t1w=`eval ls $in_bids/$subj_sess_dir/anat/${subj_sess_prefix}${searchstring_t1w} | head -n 1`
 
-if [ "$N_t1w" = 0 ]
-then
-	
-	echo "--- No T1w images found in $in_bids/$subj_sess_dir/anat ---"
-
-fi
-
-
-
+source $surfmorph_cfg
 
 
 mkdir -p $work_folder $derivatives
@@ -282,19 +271,15 @@ work_folder=`realpath $work_folder`
 
 
 
+target_prob_seg_dir=labels/t1/probseg
 target_prob_seg=labels/t1/probseg/${surfmorph_name}.nii.gz
 target_prob_seg_affine_atlas=labels/t1/probseg_affine_aladin_to_$atlas/${surfmorph_name}.nii.gz
 
 #exports for called scripts
-export in_atlas_dir surfmorph_cfg cfg_dir template_prob_seg target_prob_seg_affine_atlas surfdisp_name
+export in_atlas_dir surfmorph_cfg cfg_dir target_prob_seg_affine_atlas surfdisp_name
 
 
 #use symlinks instead of copying 
-for atlas_dir in `ls -d $in_atlas_dir/*`
-do
- atlas_name=${atlas_dir##*/}
-
-
  if ! test -h $work_folder/$atlas 
  then
 	if test -d $work_folder/$atlas
@@ -308,7 +293,6 @@ do
 
  fi
  
-done
 
 echo $participants
 	
@@ -349,11 +333,22 @@ then
 	#import T1 from BIDS
 	if [ ! -e $work_folder/$subj_sess_prefix/t1/t1.nii.gz ]
 	then
+
+		N_t1w=`eval ls $in_bids/$subj_sess_dir/anat/${subj_sess_prefix}${searchstring_t1w} | wc -l`
+		in_t1w=`eval ls $in_bids/$subj_sess_dir/anat/${subj_sess_prefix}${searchstring_t1w} | head -n 1`
+
+		if [ "$N_t1w" = 0 ]
+		then
+	
+			echo "--- No T1w images found in $in_bids/$subj_sess_dir/anat ---"
+		fi
+
+
 	pushd $work_folder
 	 echo --- Running importT1 ---
 	 echo Found $N_t1w matching T1w, using first found: $in_t1w
-	 echo $execpath/bin/importT1 $in_t1w $subj_sess_prefix
-	 $execpath/bin/importT1 $in_t1w $subj_sess_prefix
+	 echo $execpath/deps/importT1 $in_t1w $subj_sess_prefix
+	 $execpath/deps/importT1 $in_t1w $subj_sess_prefix
 	 popd
 	else
 	 echo --- Skipping importT1 ---
@@ -364,14 +359,20 @@ then
 	if [ ! -e $work_folder/$subj_sess_prefix/t1/t1.brain.inorm.nii.gz ]
 	then
 	   pushd $work_folder
-		 #register atlas and subject t1
-		 if [ ! -e ${subj_sess_prefix}/reg/affine_aladin_t1/${atlas}_${subj_sess_prefix}/${atlas}_to_${subj_sess_prefix}.xfm ]
+		# preproc t1
+		    echo $execpath/deps/preprocT1  ${subj_sess_prefix}
+		    $execpath/deps/preprocT1  ${subj_sess_prefix}
+		popd
+		fi
+		   #register atlas and subject t1
+		 if [ ! -e $work_folder/${subj_sess_prefix}/reg/affine_aladin_t1/${atlas}_${subj_sess_prefix}/${atlas}_to_${subj_sess_prefix}.xfm ]
 		 then
+	   pushd $work_folder
+			 echo "atlas is $atlas"
 		    echo $execpath/deps/reg_intersubj_aladin  t1 $atlas ${subj_sess_prefix}
 		    $execpath/deps/reg_intersubj_aladin  t1 $atlas ${subj_sess_prefix}
+	  	popd
 		 fi
-		popd
-	fi
 
 
 
@@ -394,17 +395,22 @@ then
 			 reg_bspline_f3d t1 $atlas $subj_sess_prefix
 	      fi
 
+	      if [ ! -e ${subj_sess_prefix}/$target_prob_seg ]
+	      then
+
 	      #propagating labels
 	      echo propLabels_reg_bspline_f3d t1 $labelgroup_prob $atlas  $subj_sess_prefix -L
 	      propLabels_reg_bspline_f3d t1 $labelgroup_prob $atlas  $subj_sess_prefix -L
 
 
-	      target_prob_seg_in=${subj_sess_prefix}/labels/t1/${labelgroup_prob}_bspline_f3d_${atlas}_affine_aladin_to_${atlas}/$template_prob_seg_file
+	      target_prob_seg_in=${subj_sess_prefix}/labels/t1/${labelgroup_prob}_bspline_f3d_${atlas}/$template_prob_seg_file
 
 	      #copy seg to standardized filename
+	      mkdir -p ${subj_sess_prefix}/$target_prob_seg_dir
+	      echo "cp -v $target_prob_seg_in ${subj_sess_prefix}/$target_prob_seg"
 	      cp -v $target_prob_seg_in ${subj_sess_prefix}/$target_prob_seg
 
-
+	      fi
 	      popd
 	fi
 
@@ -424,8 +430,8 @@ then
      template_lock=etc/run_template.lock
      if mkdir -p $template_lock
      then
-         echo computeSurfaceDisplacementsSingleStructure template_placeholder  $surfmorph_cfg -N -t
-         computeSurfaceDisplacementsSingleStructure template_placeholder  $surfmorph_cfg -N -t
+         echo $execpath/deps/computeSurfaceDisplacementsSingleStructure template_placeholder  $surfmorph_cfg -N -t
+         $execpath/deps/computeSurfaceDisplacementsSingleStructure template_placeholder  $surfmorph_cfg -N -t
          rmdir $template_lock
 
 	 else
@@ -460,7 +466,6 @@ then
         echo subj_sess_prefix $subj_sess_prefix
 
 
-      source $surfmorph_cfg
       if [ ! -e $work_folder/surfdisp_singlestruct_${parcellation_name}/${subj_sess_prefix}/templateSurface_seed_inout.vtk ]
 	then
         pushd $work_folder
@@ -469,8 +474,8 @@ then
 	      #these steps take the segmentations in subj native space, and affine transform them to the atlas 
 	      echo propLabels_backwards_intersubj_aladin t1  probseg  $atlas $subj_sess_prefix -L
 	      propLabels_backwards_intersubj_aladin t1  probseg  $atlas $subj_sess_prefix -L
-	      echo computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg  -N
-	      computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg  -N
+	      echo $execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg  -N
+	      $execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg  -N
           popd
 	fi
 
