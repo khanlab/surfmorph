@@ -41,6 +41,11 @@ surfmorph_type=striatum_cortical
 in_seg_dir=
 
 
+# option 1: have prob. seg in atlas space -> use it to segment targets -- just need to specify atlas & atlas_prob_seg (this is currently implemented)
+# option 2: have pre-computed target segs AND atlas prob seg -- need to specify atlas, atlas_prob_seg, in_seg_dir, and seg_matching_string
+# option 3: have pre-computed tarfget segs, but no atlas prob seg -- need to specify in_seg_dir, and seg_matching_string, then:
+	# transform segs to atlas space, and then generate avg to build prob seg
+
 if [ "$#" -lt 3 ]
 then
  echo "Usage: surfmorph bids_dir output_dir {participant,group} <optional arguments>"
@@ -497,65 +502,6 @@ then
 
      done #ses
  done
-     
-
-    echo "computing surface-based tractography, formerly analysis level participant4"
-
-    bedpost_root=`realpath $in_seg_dir/bedpost`
-     for subj in $subjlist 
-     do
-
-      #add on sub- if not exists
-      subj=`fixsubj $subj`
-
-
-      #loop over sub- and sub-/ses-
-    for subjfolder in `ls -d $in_bids/$subj/dwi $in_bids/$subj/ses-*/dwi 2> /dev/null`
-    do
-
-        subj_sess_dir=${subjfolder%/dwi}
-        subj_sess_dir=${subj_sess_dir##$in_bids/}
-        if echo $subj_sess_dir | grep -q '/'
-        then
-            sess=${subj_sess_dir##*/}
-            subj_sess_prefix=${subj}_${sess}
-        else
-            subj_sess_prefix=${subj}
-        fi
-        echo subjfolder $subjfolder
-        echo subj_sess_dir $subj_sess_dir
-        echo sess $sess
-        echo subj_sess_prefix $subj_sess_prefix
-
-
-    source $surfmorph_cfg
-	if [ ! -e $work_folder/$subj_sess_prefix/bedpost.${parcellation_name}/vertexTract/fdt_matrix2.dot ]
-	then
-	      echo $execpath/9.2_runSurfBasedTractography $work_folder $bedpost_root $surfmorph_cfg $nsamples $subj_sess_prefix
-	      $execpath/9.2_runSurfBasedTractography $work_folder $bedpost_root $surfmorph_cfg $nsamples $subj_sess_prefix
-	fi
-
-       pushd $work_folder      
-       runMatlabCmd  processSubjSurfData "'$subj_sess_prefix'" "'$in_seg_dir'" "'$parcellation_name'" "'$target_labels_txt'"
-       popd
-
-
-     #make BIDS links for output
-     out_subj_dir=$out_folder/$subj_sess_dir/anat
-
-     #surf parc in T1w space (vtk file, open in slicer or paraview)
-     parc_surf=$work_folder/subj_vtk/${subj_sess_prefix}.parc.vtk
-     
-     out_parc_surf=$out_subj_dir/${subj_sess_prefix}_space-T1w_${bids_tags}_surfdiffparc.vtk
-
-     #surf vtk of parcellation
-     mkdir -p $out_subj_dir
-     ln -srfv $parc_surf $out_parc_surf
-
-
-
-    done #ses
-     done
      
 
 
