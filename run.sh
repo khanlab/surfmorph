@@ -51,7 +51,8 @@ then
  echo "          [--participant_label PARTICIPANT_LABEL [PARTICIPANT_LABEL...]]"
  echo "          [--matching_T1w MATCHING_STRING"
  echo "          [--reg_init_participant PARTICIPANT_LABEL"
- echo "          [--surfmorph_type PARCELLATE_TYPE (default: striatum_cortical; can alternatively specify config file) "
+ echo "          [--surfmorph_type SURFMORPH_TYPE (default: striatum_cortical; can alternatively specify config file) "
+ echo "          [--in_atlas_dir ATLAS_DIR]"
  echo ""
  echo "	Analysis levels:"
  echo "		participant: T1 pre-proc, label prop, surface-based displacement morphometry (LDDMM)"
@@ -113,9 +114,6 @@ while :; do
           ;;
 
 
-           --enable_legacy_dwi )       # takes an option argument; ensure it has been specified.
-            legacy_dwi_proc=1;;
-#-------------------
 
            --surfmorph_type )       # takes an option argument; ensure it has been specified.
           if [ "$2" ]; then
@@ -147,7 +145,22 @@ while :; do
           --in_seg_dir=)         # handle the case of an empty --participant=
          die 'error: "--in_seg_dir" requires a non-empty option argument.'
           ;;
-#-------------------
+
+           --in_atlas_dir )       # takes an option argument; ensure it has been specified.
+          if [ "$2" ]; then
+                in_atlas_dir=$2
+                  shift
+	      else
+              die 'error: "--in_atlas_dir" requires a non-empty option argument.'
+            fi
+              ;;
+     --in_atlas_dir=?*)
+          in_atlas_dir=${1#*=} # delete everything up to "=" and assign the remainder.
+            ;;
+          --in_atlas_dir=)         # handle the case of an empty --participant=
+         die 'error: "--in_atlas_dir" requires a non-empty option argument.'
+          ;;
+
 
            --reg_init_participant )       # takes an option argument; ensure it has been specified.
           if [ "$2" ]; then
@@ -213,28 +226,18 @@ fi
 
 
 
-if [ ! -n "$in_seg_dir" ] # if not specified
+if [  -n "$in_seg_dir" ] # if specified
 then
 
-    #if not specified, use stored value:
-    if [ -e $work_folder/etc/in_seg_dir ]
-    then
-        in_seg_dir=`cat $work_folder/etc/in_seg_dir`
-        echo "Using previously defined --in_seg_dir $in_seg_dir"
-    else
-        echo "ERROR: --in_seg_dir must be specified!"
-        exit 1
-    fi
+	if [ ! -e $in_seg_dir ]
+	then
+	    echo "ERROR: in_seg_dir $in_seg_dir does not exist!"
+	    exit 1
+	fi
+	in_seg_dir=`realpath $in_seg_dir`
 
 fi
 
-if [ ! -e $in_seg_dir ]
-then
-    echo "ERROR: in_seg_dir $in_seg_dir does not exist!"
-	exit 1
-fi
-
-in_seg_dir=`realpath $in_seg_dir`
 
 
 if [ -e $in_bids ]
@@ -277,26 +280,13 @@ fi
 mkdir -p $work_folder $derivatives
 work_folder=`realpath $work_folder`
 
-#in_seg_dir defined:
-#save it to file
-mkdir -p $work_folder/etc
-echo "$in_seg_dir" > $work_folder/etc/in_seg_dir
 
 
-#surf disp requires this (can edit later to build into that and remove this..)
-index_list=$work_folder/etc/surfdisp_seed.csv
-if [ ! -e $index_list ]
-then
-  if $(mkdir -p $work_folder/etc/lock_index)
-  then
-	echo "seed,0" > $index_list
-	rmdir $work_folder/etc/lock_index
-  fi
- fi
-index_list=`realpath $index_list`
+target_prob_seg=labels/t1/probseg/${surfmorph_name}.nii.gz
+target_prob_seg_affine_atlas=labels/t1/probseg_affine_aladin_to_$atlas/${surfmorph_name}.nii.gz
 
 #exports for called scripts
-export in_atlas_dir surfmorph_cfg index_list cfg_dir
+export in_atlas_dir surfmorph_cfg cfg_dir template_prob_seg target_prob_seg_affine_atlas surfdisp_name
 
 
 #use symlinks instead of copying 
@@ -305,17 +295,16 @@ do
  atlas_name=${atlas_dir##*/}
 
 
- if ! test -h $work_folder/$atlas_name 
+ if ! test -h $work_folder/$atlas 
  then
-	if test -d $work_folder/$atlas_name 
+	if test -d $work_folder/$atlas
 	then
-
-	   echo "atlas exists and is not a symlink, so can remove it"
-   	   rm -rf $work_folder/$atlas_name
+	   echo "atlas exists and is not a symlink, can remove it"
+   	   echo " rm -rf $work_folder/$atlas"
     	fi
 	
-	echo ln -sfv $atlas_dir $work_folder/$atlas_name
-	 ln -sfv $atlas_dir $work_folder/$atlas_name
+	 echo ln -sfv $in_atlas_dir/$atlas $work_folder/$atlas
+	 ln -sfv $in_atlas_dir/$atlas $work_folder/$atlas
 
  fi
  
@@ -374,23 +363,57 @@ then
 	#t1 pre-processing (required for niftyreg linear registration)
 	if [ ! -e $work_folder/$subj_sess_prefix/t1/t1.brain.inorm.nii.gz ]
 	then
-	    #steps inside of 2.0_processT1 will only run if incomplete
-	     echo $execpath/2.0_processT1 $work_folder $subj_sess_prefix
-	    $execpath/2.0_processT1 $work_folder $subj_sess_prefix
-	 fi
+	   pushd $work_folder
+		 #register atlas and subject t1
+		 if [ ! -e ${subj_sess_prefix}/reg/affine_aladin_t1/${atlas}_${subj_sess_prefix}/${atlas}_to_${subj_sess_prefix}.xfm ]
+		 then
+		    echo $execpath/deps/reg_intersubj_aladin  t1 $atlas ${subj_sess_prefix}
+		    $execpath/deps/reg_intersubj_aladin  t1 $atlas ${subj_sess_prefix}
+		 fi
+		popd
+	fi
+
+
 
 
 	#TODO, import seg data
+	if [ -n "$in_seg_dir" ]
+	then
+		
 	echo "    importing data from in_seg_dir"
-#	if [ -e $in_seg_dir/work/$subj_sess_prefix/t1/t1.brain.inorm.nii.gz ]
-#	then
-#
-#        fi #after import from in_seg_dir
-  
+	echo " NOT IMPLEMENTED YET!"
+	
+	else
+	      #generating segmentations using atlas-based segmentation
+	   pushd $work_folder
+
+	      #performing registration
+	      if [ ! -e $subj_sess_prefix/reg/bspline_f3d_t1/${atlas}_${subj_sess_prefix}/ctrlpt_${atlas}_to_${subj_sess_prefix}.nii.gz ]
+    	      then
+			 echo reg_bspline_f3d t1 $atlas $subj_sess_prefix
+			 reg_bspline_f3d t1 $atlas $subj_sess_prefix
+	      fi
+
+	      #propagating labels
+	      echo propLabels_reg_bspline_f3d t1 $labelgroup_prob $atlas  $subj_sess_prefix -L
+	      propLabels_reg_bspline_f3d t1 $labelgroup_prob $atlas  $subj_sess_prefix -L
+
+
+	      target_prob_seg_in=${subj_sess_prefix}/labels/t1/${labelgroup_prob}_bspline_f3d_${atlas}_affine_aladin_to_${atlas}/$template_prob_seg_file
+
+	      #copy seg to standardized filename
+	      cp -v $target_prob_seg_in ${subj_sess_prefix}/$target_prob_seg
+
+
+	      popd
+	fi
+
  done #ses
  done
 
 
+ # at this point, have template and target prob segs set (template_prob_seg and template_prob_seg)
+ 
 
 
     echo "analysis level participant, surface-based processing"
@@ -442,13 +465,10 @@ then
 	then
         pushd $work_folder
 
-	     #this next step is only required if performing atlas-based segmentation with niftyreg: 
-#	      echo propLabels_reg_bspline_f3d t1 $labelgroup_prob $atlas  $subj_sess_prefix -L
-#	      propLabels_reg_bspline_f3d t1 $labelgroup_prob $atlas  $subj_sess_prefix -L
 
 	      #these steps take the segmentations in subj native space, and affine transform them to the atlas 
-	      echo propLabels_backwards_intersubj_aladin t1  ${labelgroup_prob}_bspline_f3d_$atlas  $atlas $subj_sess_prefix -L
-	      propLabels_backwards_intersubj_aladin t1  ${labelgroup_prob}_bspline_f3d_$atlas  $atlas $subj_sess_prefix -L
+	      echo propLabels_backwards_intersubj_aladin t1  probseg  $atlas $subj_sess_prefix -L
+	      propLabels_backwards_intersubj_aladin t1  probseg  $atlas $subj_sess_prefix -L
 	      echo computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg  -N
 	      computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg  -N
           popd

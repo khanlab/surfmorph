@@ -6,12 +6,9 @@
 #config file will set:
 
 #surfdisp_name=   #name of config file (for creating output dir)
-#template_4d=  #path to template 4D seg  (absolute path) -- could potentially be MNI atlas 
-#
-#index_list=		#label list file for selecting what channels to use
-#			#name,index (into 4D image)
-# optional (template_index_list, target_index_list)
-#target_4d_path=   #path to 4D segmentations (will be prepended with subjid)
+#template_prob_seg=  #path to template prob seg  (absolute path) -- could potentially be MNI atlas 
+#target_prob_seg_affine_atlas= #filename for target prob seg ( prepended with subj id)
+
 #resample_res=  #isotropic resolution to resample images
 #isothreshold=  #threshold for generating isosurface
 #genpbs_opts=  #options for generatePBSfluidmatch
@@ -93,28 +90,13 @@ out_dir=`realpath $out_dir`
 template_dir=$out_dir/template
 mkdir -p $template_dir
 
-if [ ! -e $template_4d ]
+if [ ! -e $template_prob_seg ]
 then
- echo "template 4D seg does not exist!"
+ echo "template prob seg does not exist!"
  exit 0
 fi
 
-#read index_list to pull out indices of interest
-#pull out indices of interest
-if [ -n "$template_index_list" ]
-then
-  echo template_index_list defined
-  t_index_list=$template_index_list
-else
-  echo template_index_list not defined, using index_list
-  t_index_list=$index_list
-fi
-
-for line in `cat $t_index_list`
-do
- 
- struct=${line%%,*}
- index=${line##*,}
+ struct=seed
 
  template_img_list=$template_dir/template_images.$struct.txt
 
@@ -124,8 +106,8 @@ do
 
  if [ ! -e $nii ]
  then
-echo  fslroi $template_4d $nii $index 1
-  fslroi $template_4d $nii $index 1
+	echo cp -v $template_prob_seg $nii
+	 cp -v $template_prob_seg $nii
  fi
  if [ ! -e $ana ]
  then
@@ -187,7 +169,6 @@ fi
   runMatlabCmd  transformByuLinearXfm "'$byu_cpp'" "'$byu_nii_xfm'" "'$byu_niispace'"
  fi
 
-done
 
 
 
@@ -216,20 +197,9 @@ mkdir -p $target_dir
 echo $subj
 #put pipeline commands here
 
-if [ -n "$target_index_list" ]
-then
-  t_index_list=$target_index_list
-else
-  t_index_list=$index_list
-fi
 
-#read index_list to pull out indices of interest
-#pull out indices of interest
-for line in `cat $t_index_list`
-do
- 
- struct=${line%%,*}
- index=${line##*,}
+
+ struct=seed
 
  nii=$target_dir/$struct.nii.gz
 
@@ -239,7 +209,7 @@ do
 
 if [ ! -e $nii ]
 then 
- fslroi $subj_dir/$target_4d_path $nii $index 1
+	cp -v ${subj}/$target_prob_seg_affine_atlas $nii 
 fi
  
  template_nii=$template_dir/${struct}.nii.gz
@@ -405,7 +375,6 @@ fi
 
 runMatlabCmd generateNormalizedDisplacements "'$byu_niispace'" "'$prop_surf_template_nii'" "'$disp_txt'" "'$inout_txt'" "'$prop_surf_template_norm_nii'" "'$disp_vtk'" "'$inout_vtk'"
 
-done #structure
 
 
 
