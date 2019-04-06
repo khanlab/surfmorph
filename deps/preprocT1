@@ -17,7 +17,7 @@ output_dir=.
 
 
 betopts="-f 0.4 -B"
-betopts="-f 0.4 "
+#betopts="-f 0.4 "
 
 #betopts="-f 0.4 -B -c 95 107 163 -v"   # settings for pennylab dti
 
@@ -53,22 +53,29 @@ then
 
 else
 
+if [ ! -e $brainmask ]
+then
+
 #skull strip 
 echo bet $t1 $bet_t1 $betopts
 bet $t1 $bet_t1 $betopts
 echo fslmaths $bet_t1 -bin $brainmask
 fslmaths $bet_t1 -bin $brainmask
+fi
 
 
 fi
 
+norm_t1=$t1_dir/t1.brain.inorm.nii.gz
+if [ ! -e $norm_t1 ]
+then
 
 #N4 bias field correction, and intensity normalize to mean 100 
-norm_t1=$t1_dir/t1.brain.inorm.nii.gz
 echo N4BiasFieldCorrection -i $bet_t1 -o $norm_t1
 N4BiasFieldCorrection -i $bet_t1 -o $norm_t1
 echo fslmaths $norm_t1 -inm 0.5 $norm_t1
 fslmaths $norm_t1 -inm 0.5 $norm_t1
 
+fi
 
 done

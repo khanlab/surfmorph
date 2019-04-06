@@ -6,6 +6,7 @@ function usage {
  echo "   -o output_dir	 Set output directory (default .)"
  echo "   -r             Use rigid (6-dof) registration (default affine 12-dof)"
  echo "   -i <subjid>	 Use xfm from <subjid> to initialize (default - no initialization)"
+ echo "   -I <xfm>	 Use xfm file to initialize (default - no initialization)"
  echo "   -a <atlas_dir> Use <atlas_dir> for path to atlas_subj"
  echo ""
  echo " e.g. to register t1 catani to test_subj use:"
@@ -51,11 +52,12 @@ fi
 
 rigid_opt=""
 init_subj=""
+init_xfm=""
 
 shift 1 #shift by number of required arguments (incl subjid/list)
 
 #flag o with argument "o:"
-while getopts "o:ri:a:" options; do
+while getopts "o:ri:a:I:" options; do
  case $options in
     o ) echo "Using output directory: $OPTARG"
 	output_dir=$OPTARG;;
@@ -64,6 +66,8 @@ while getopts "o:ri:a:" options; do
 	rigid_opt="-rigOnly";;
     i ) echo "Initializing with affine from subj: $OPTARG"
         init_subj=$OPTARG;;
+    I ) echo "Initializing with affine from file: $OPTARG"
+        init_xfm=$OPTARG;;
     a ) echo "Using atlas data dir: $OPTARG"
         atlas_nii=$OPTARG/$img_path
 	echo atlas_nii=$atlas_nii;;
@@ -96,6 +100,10 @@ do
  then
    init_opt="-inaff $output_dir/${init_subj}/reg/${reg_type}_${img_type}/${atlas_subj}_${init_subj}/${init_subj}_to_${atlas_subj}.xfm"
    echo "Using init subj xfm: $init_opt"
+ elif [ -n "$init_xfm" ]
+ then
+   init_opt="-inaff $init_xfm"
+   echo "Using init subj xfm: $init_xfm"
  else 
    init_opt=""
  fi

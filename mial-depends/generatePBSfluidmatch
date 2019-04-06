@@ -32,10 +32,10 @@ echo "Note that landmark initialization is not yet implemented in this script"
 }
 
 
-if [ -e $PBS_CONFIG ]
-then
-  source $PBS_CONFIG
-fi
+#if [ -e $PBS_CONFIG ]
+#then
+#  source $PBS_CONFIG
+#fi
 
 
 
@@ -284,14 +284,14 @@ then
     fi
 
 #    echo "$PBS_PREFIX -l $PBS_MEMORY=`MemUsageFluidMatch $IMAGE $NUM_PROCS $PADI $PADH $TIMESTEPS $NUM_CHANS $SCM_CHAN $USE_PMEM`" >> $PBS_FILE
- 	MEMORY_VALUE=`MemUsageFluidMatch $IMAGE $NUM_PROCS $PADI $PADH $TIMESTEPS $NUM_CHANS $SCM_CHAN $USE_PMEM`   
+ #	MEMORY_VALUE=`MemUsageFluidMatch $IMAGE $NUM_PROCS $PADI $PADH $TIMESTEPS $NUM_CHANS $SCM_CHAN $USE_PMEM`   
   fi #if MULTICHANNEL
 
  fi #MEMORY
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-pbsBoilerPlate -n fslddmmMC-fullbrainmap.metrics -c $NUM_PROCS -m $MEMORY_VALUE -w $WALLTIME ${QUEUE_NAME:+"-q $QUEUE_NAME"} ${CUSTOM_ARCH:+"-a $CUSTOM_ARCH"} ${EMAIL:+"-e $EMAIL"} ${NODES:+"-N $NODES"} -f $PBS_FILE
+#pbsBoilerPlate -n fslddmmMC-fullbrainmap.metrics -c $NUM_PROCS -m $MEMORY_VALUE -w $WALLTIME ${QUEUE_NAME:+"-q $QUEUE_NAME"} ${CUSTOM_ARCH:+"-a $CUSTOM_ARCH"} ${EMAIL:+"-e $EMAIL"} ${NODES:+"-N $NODES"} -f $PBS_FILE
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
