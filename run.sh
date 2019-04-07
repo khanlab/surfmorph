@@ -7,17 +7,18 @@ function buildTemplate {
 
 	#build template from $((iter-1)) data
 	
-       iter_out=$work_folder/iter$iter
+       iter_out=$work_folder/${seg_name}_iter$iter
+       iter_prev=$work_folder/${seg_name}_iter$((iter-1))
        mkdir -p $iter_out
-       all_target_segs=$work_folder/iter$iter/in_target_segs.nii.gz
-       template_prob_seg=$work_folder/iter$iter/template_prob_seg.nii.gz
+       all_target_segs=$iter_out/in_target_segs.nii.gz
+       template_prob_seg=$iter_out/template_prob_seg.nii.gz
  
        #get all subject segs from previous iteration into a 4D file
-       echo fslmerge -t $all_target_segs  $work_folder/iter$((iter-1))/*/*.warpToTemplate.nii.gz
-       fslmerge -t $all_target_segs  $work_folder/iter$((iter-1))/*/*.warpToTemplate.nii.gz
+       echo fslmerge -t $all_target_segs  $iter_prev/*/*.warpToTemplate.nii.gz
+       fslmerge -t $all_target_segs  $iter_prev/*/*.warpToTemplate.nii.gz
 
 	#print out centroids to use as a QC check:
-	fslstats -t $all_target_segs  -C > $work_folder/iter$iter/in_target_segs.centroids.txt
+	fslstats -t $all_target_segs  -C > $iter_out/in_target_segs.centroids.txt
 
 	#average it to create current iteration template
    	echo fslmaths $all_target_segs -Tmean $template_prob_seg
@@ -25,8 +26,8 @@ function buildTemplate {
 
 	#run script to pre-proc template data for current iteration 
        pushd $work_folder
-        echo $execpath/deps/computeSurfaceDisplacementsSingleStructure template_placeholder  $surfmorph_cfg $template_prob_seg -N -t  -o $iter_out
-        $execpath/deps/computeSurfaceDisplacementsSingleStructure template_placeholder  $surfmorph_cfg $template_prob_seg -N -t  -o $iter_out
+        echo $execpath/deps/computeSurfaceDisplacementsSingleStructure template_placeholder  $template_prob_seg $seg_name -N -t  -o $iter_out
+        $execpath/deps/computeSurfaceDisplacementsSingleStructure template_placeholder  $template_prob_seg $seg_name -N -t  -o $iter_out
 	popd
 
 }
@@ -64,16 +65,19 @@ cfg_dir=$execpath/cfg
 
 in_atlas_dir=$execpath/atlases
 
-MAX_ITER=5
+#default template for linear registration
+atlas=MNI152NLin2009cAsym
+
+#template mostly is stabilised after 3 iterations
+MAX_ITER=3
 
 participant_label=
 matching_T1w=
-n_cpus=8
 reg_init_subj=
-surfmorph_type=striatum_cortical
+surfmorph_type=
 in_seg_dir=
 matching_seg=
-
+seg_name=
 
 
 #TODO:
@@ -98,28 +102,28 @@ then
  echo " Required arguments:"
  echo "          [--in_seg_dir SEG_DIR]" 
  echo "          [--matching_seg MATCHING_STRING]" 
+ echo "          [--seg_name LABEL_NAME] (short BIDS name (letter/numbers only) for the specified ROI)"
  echo ""
  echo " Optional arguments:"
  echo "          [--participant_label PARTICIPANT_LABEL [PARTICIPANT_LABEL...]]"
  echo "          [--matching_T1w MATCHING_STRING"
  echo ""
- echo "          [--seg_label LABEL_NUMBER (default: binarize all non-zero from image)"
+ echo "          [--seg_label LABEL_NUMBER (default: will binarize all non-zero labels from image)"
  echo ""
- echo "          [--surfmorph_type SURFMORPH_TYPE (default: striatum_cortical; can alternatively specify config file) "
+ echo "          [--surfmorph_type SURFMORPH_TYPE (pre-packaged config for specifying options) "
  echo "          [--in_atlas_dir ATLAS_DIR]"
  echo ""
  echo "	Analysis levels:"
- echo "		participant: T1 pre-proc, label prop, surface-based displacement morphometry (LDDMM)"
- echo "		group: generate surface-based analysis stats csv"
+ echo "		group1: T1w import, T1w  pre-proc, linear registration + generate i-th template" 
+ echo "         participant1:  LDDMM mappings from i-th template to subjects"
  echo ""
- echo "         Available parcellate types:"
+ echo "         Available config files:"
  for cfg in `ls $execpath/cfg/surfmorph.*.cfg`
  do
      cfg=${cfg##*/surfmorph.}
      cfg=${cfg%%.cfg}
-     echo "         $cfg"
+    echo "         $cfg"
  done
-
 
 
  exit 0
@@ -143,15 +147,6 @@ while :; do
 	     usage
             exit
               ;;
-     --n_cpus )       # takes an option argument; ensure it has been specified.
-          if [ "$2" ]; then
-                n_cpus=$2
-                  shift
-	      else
-              die 'error: "--n_cpus" requires a non-empty option argument.'
-            fi
-              ;;
-
      --participant_label )       # takes an option argument; ensure it has been specified.
           if [ "$2" ]; then
                 participant_label=$2
@@ -277,6 +272,22 @@ while :; do
          die 'error: "--seg_label" requires a non-empty option argument.'
           ;;
 
+     --seg_name )       # takes an option argument; ensure it has been specified.
+          if [ "$2" ]; then
+                seg_name=$2
+                  shift
+	      else
+              die 'error: "--seg_name" requires a non-empty option argument.'
+            fi
+              ;;
+     --seg_name=?*)
+          seg_name=${1#*=} # delete everything up to "=" and assign the remainder.
+            ;;
+          --seg_name=)         # handle the case of an empty --acq=
+         die 'error: "--seg_name" requires a non-empty option argument.'
+          ;;
+
+
 
 
       -?*)
@@ -297,6 +308,9 @@ participants=$in_bids/participants.tsv
 work_folder=$out_folder/work
 derivatives=$out_folder #bids derivatives
 
+if [ -n "$surfmorph_type" ]
+then
+
 if [ -e $execpath/cfg/surfmorph.$surfmorph_type.cfg ]
 then
      surfmorph_cfg=$execpath/cfg/surfmorph.$surfmorph_type.cfg 
@@ -308,11 +322,12 @@ then
  echo "ERROR: --surfmorph_type $surfmorph_type does not exist!"
  exit 1
 fi
-
-
 source $surfmorph_cfg
+fi
 
-if [  -n "$in_seg_dir" -a -n "$matching_seg"  ] # if specified
+
+
+if [  -n "$in_seg_dir" -a -n "$matching_seg" -a -n "$seg_name" ] # if specified
 then
 
 	if [ ! -e $in_seg_dir ]
@@ -380,11 +395,11 @@ work_folder=`realpath $work_folder`
 
 
 target_prob_seg_dir=labels/t1/probseg
-target_prob_seg=labels/t1/probseg/${surfmorph_name}.nii.gz
-target_prob_seg_affine_atlas=labels/t1/probseg_affine_aladin_to_$atlas/${surfmorph_name}.nii.gz
+target_prob_seg=labels/t1/probseg/${seg_name}.nii.gz
+target_prob_seg_affine_atlas=labels/t1/probseg_affine_aladin_to_$atlas/${seg_name}.nii.gz
 
 #exports for called scripts
-export in_atlas_dir surfmorph_cfg cfg_dir target_prob_seg_affine_atlas surfmorph_name execpath
+export in_atlas_dir atlas surfmorph_cfg cfg_dir target_prob_seg_affine_atlas seg_name execpath
 
 
 #use symlinks instead of copying 
@@ -584,8 +599,8 @@ fi
 	#gen template for building iter1 template from iter0
 	iter=0
 	#copy the new segs into a iter0/ folder for the template building (this represents the affine registered subj data)
-     	parallel mkdir -vp $work_folder/iter$iter/{} ::: $subj_sess_prefix_all 
-	parallel cp -v $work_folder/{}/$target_prob_seg_affine_atlas $work_folder/iter$iter/{}/seg.affine.warpToTemplate.nii.gz ::: $subj_sess_prefix_all 
+     	parallel mkdir -vp $work_folder/${seg_name}_iter$iter/{} ::: $subj_sess_prefix_all 
+	parallel cp -v $work_folder/{}/$target_prob_seg_affine_atlas $work_folder/${seg_name}_iter$iter/{}/seg.affine.warpToTemplate.nii.gz ::: $subj_sess_prefix_all 
 
 fi # if template_prob_seg iter 1 doesn't exist
 
@@ -595,7 +610,7 @@ fi # if template_prob_seg iter 1 doesn't exist
 for iter in `seq 1 $MAX_ITER`
 do
 
-if [ ! -e $work_folder/iter$iter/template_prob_seg.nii.gz ]
+if [ ! -e $work_folder/${seg_name}_iter$iter/template_prob_seg.nii.gz ]
 then
 
 	buildTemplate $iter
@@ -618,7 +633,7 @@ done
      #figure out which iteration we are on
      for iter in `seq 1 $MAX_ITER`
      do
-	     if [ -e $work_folder/iter$iter/template_prob_seg.nii.gz -a ! -e $work_folder/iter$((iter+1))/template_prob_seg.nii.gz ]
+	     if [ -e $work_folder/${seg_name}_iter$iter/template_prob_seg.nii.gz -a ! -e $work_folder/${seg_name}_iter$((iter+1))/template_prob_seg.nii.gz ]
 	     then
 		echo "running mapping for iter $iter"
 		break
@@ -648,86 +663,55 @@ done
         echo subj_sess_prefix $subj_sess_prefix
 
 
-       iter_out=$work_folder/iter$iter
-       if [ ! -e $work_folder/$iter_out/${subj_sess_prefix}/templateSurface_seed_inout.vtk ]
+       iter_out=$work_folder/${seg_name}_iter$iter
+       if [ ! -e $work_folder/$iter_out/${subj_sess_prefix}/templateSurface_${seg_name}_inout.vtk ]
        then
+	in_atlas_subj_xfm=$work_folder/${subj_sess_prefix}/reg/affine_aladin_t1/${atlas}_${subj_sess_prefix}/${atlas}_to_${subj_sess_prefix}.xfm
+	
 	pushd $work_folder
-	$execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg $subj_sess_prefix/$target_prob_seg_affine_atlas  -N -o $iter_out
+	echo $execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $subj_sess_prefix/$target_prob_seg_affine_atlas  $seg_name -N -o $iter_out -x $in_atlas_subj_xfm
+	$execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $subj_sess_prefix/$target_prob_seg_affine_atlas  $seg_name -N -o $iter_out -x $in_atlas_subj_xfm
 	popd
        fi
 
-   done
-   done
-
-   elif [ "$analysis_level" = "participant2" ]
-   then
-
-   iter=0
-     iter_out=$work_folder/iter$iter
-
-    echo "analysis level participant2, surface-based processing & LDDMM"
-    echo "   computing surface-based morphometry"
-     for subj in $subjlist 
-     do
-
-      #add on sub- if not exists
-      subj=`fixsubj $subj`
-
-      
-      #loop over sub- and sub-/ses-
-    for subjfolder in `ls -d $in_bids/$subj/anat $in_bids/$subj/ses-*/anat 2> /dev/null`
-    do
-
-        subj_sess_dir=${subjfolder%/anat}
-        subj_sess_dir=${subj_sess_dir##$in_bids/}
-        if echo $subj_sess_dir | grep -q '/'
-        then
-            sess=${subj_sess_dir##*/}
-            subj_sess_prefix=${subj}_${sess}
-        else
-            subj_sess_prefix=${subj}
-        fi
-        echo subjfolder $subjfolder
-        echo subj_sess_dir $subj_sess_dir
-        echo sess $sess
-        echo subj_sess_prefix $subj_sess_prefix
-
-
-      if [ ! -e $work_folder/surfdisp_singlestruct_${surfmorph_name}/${subj_sess_prefix}/templateSurface_seed_inout.vtk ]
+	if [ "$iter" = "$MAX_ITER" ]
 	then
-        pushd $work_folder
 
+		#generate bids output for subj
+		echo "completed final iteration, so generating BIDS links for ${subj_sess_prefix} output files"
 
-	      echo $execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg $subj_sess_prefix/$target_prob_seg_affine_atlas  -N -o $iter_out
-	      $execpath/deps/computeSurfaceDisplacementsSingleStructure $subj_sess_prefix $surfmorph_cfg $subj_sess_prefix/$target_prob_seg_affine_atlas  -N -o $iter_out
-          popd
+		#make BIDS links for output
+		out_subj_dir=$out_folder/$subj_sess_dir/anat
+
+	        #surf parc in T1w space (vtk file, open in slicer or paraview)
+     		vec_mni=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/templateSurface_${seg_name}_disp.vtk
+     		inout_mni=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/templateSurface_${seg_name}_inout.vtk
+     
+     		out_vec_mni=$out_subj_dir/${subj_sess_prefix}_space-${atlas}_label-${seg_name}_surfmorphvec.vtk
+     		out_inout_mni=$out_subj_dir/${subj_sess_prefix}_space-${atlas}_label-${seg_name}_surfmorphinout.vtk
+
+     		inout_subj=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/subjectSurface_${seg_name}_inout.vtk
+     		vtk_subj=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/subjectSurface_${seg_name}.vtk
+		out_inout_subj=$out_subj_dir/${subj_sess_prefix}_space-T1w_label-${seg_name}_surfmorphinout.vtk
+     		out_vtk_subj=$out_subj_dir/${subj_sess_prefix}_space-T1w_label-${seg_name}_surf.vtk
+
+	       #surf vtk of avg template with displacements
+   	       mkdir -p $out_subj_dir
+	       ln -srfv $vec_mni $out_vec_mni
+	       ln -srfv $inout_mni $out_inout_mni
+	       ln -srfv $inout_subj $out_inout_subj
+	       ln -srfv $vtk_subj $out_vtk_subj
+
 	fi
 
-     #make BIDS links for output
-     out_subj_dir=$out_folder/$subj_sess_dir/anat
-
-     #surf parc in T1w space (vtk file, open in slicer or paraview)
-     vec_mni=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/templateSurface_seed_disp.vtk
-     inout_mni=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/templateSurface_seed_inout.vtk
-     
-     out_vec_mni=$out_subj_dir/${subj_sess_prefix}_space-${atlas}_${bids_tags}_surfmorphvec.vtk
-     out_inout_mni=$out_subj_dir/${subj_sess_prefix}_space-${atlas}_${bids_tags}_surfmorphinout.vtk
-
-     #surf vtk of avg template with displacements
-     mkdir -p $out_subj_dir
-     ln -srfv $vec_mni $out_vec_mni
-     ln -srfv $inout_mni $out_inout_mni
-
-
-     done #ses
- done
-     
+   done
+   done
 
 
  elif [ "$analysis_level" = "group2" ]
  then
 
-     echo "analysis level group2, computing surf-based analysis (formerly group3)" 
+     echo "analysis level group2, computing surf-based analysis" 
 
     mkdir -p $work_folder/etc
     list=$work_folder/etc/subjects.$analysis_level.$RANDOM
@@ -759,9 +743,10 @@ done
     done #ses
     done
 
-    pushd $work_folder      
-    runMatlabCmd  analyzeSurfData "'$list'" "'$in_seg_dir'" "'$surfmorph_name'" "'$target_labels_txt'" "'$out_folder/csv'" "'${bids_tags}'"
-    popd
+#    pushd $work_folder      
+#    runMatlabCmd  analyzeSurfData "'$list'" "'$in_seg_dir'" "'$surfmorph_name'" "'$target_labels_txt'" "'$out_folder/csv'" "'${bids_tags}'"
+#    popd
+echo "analyzeSurfData.m still under construction for this pipeline!"
 
     rm -f $list
 

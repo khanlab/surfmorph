@@ -1,18 +1,26 @@
 #!/bin/bash
 
-# takes a surfdisp cfg file in , e.g.: ~/vasst-dev-local/pipeline/cfg/surf_disp/hippAmyg.cfg
 
-
-#config file will set:
+#config file no longer required..
 
 #surfmorph_name=   #name of config file (for creating output dir)
-    #remove: #template_prob_seg=  #path to template prob seg  (absolute path) -- could potentially be MNI atlas 
-    #remove: #target_prob_seg_affine_atlas= #filename for target prob seg ( prepended with subj id)
 
-#resample_res=  #isotropic resolution to resample images
 #isothreshold=  #threshold for generating isosurface
+isothreshold=0.5
+
+
+
+#LDDMM options:
+#  The following were tuned for 1mm striatum mapping, should work for most applications at this resolution.
+#  With these parameters 1-cpu LDDMM runs in 1-2.5hrs on graham with ~3GB memory for L+R striatum. 
+#  If your ROI is larger/smaller, it will run slower/faster and use more/less memory.
+# 
+# alpha (-a) 0.1, gamma (-g) 0.01 (sets smoothness of vel fields - shouldn't need to adjust)
+# epsilon (-S) 1e-2  (sets step size for iterations)
+# number of iterations [-n 140]  (to limit the runtime, steps above ~140 don't usually change the result since mostly converged by 100)
+
 #genpbs_opts=  #options for generatePBSfluidmatch
-		#presmoothing??
+genpbs_opts="-a 0.1 -g 0.01 -S 1e-2 -n 140"  
 
 execpath=`dirname $0`
 execpath=`realpath $execpath`
@@ -25,7 +33,7 @@ binpath=$execpath/../mial-depends
 
 
 function usage {
- echo "Usage $0 <subjid/list> <in_prob_seg> <config_file> <options>"
+ echo "Usage $0 <subjid/list> <in_prob_seg> <seg_name> <options>"
  echo "   -o out_dir		Set output directory (default .)"
  echo "   -t 			Run template job only"
  echo "   -N			Do not perform rigid registration"
@@ -46,33 +54,20 @@ else
  subjids=$1
 fi  
 
-shift 1 #shift by number of required arguments (incl subjid/list)
 
-cfg_file=$1
-if [ -f $1 ]
-then
-  source $cfg_file
-else
-  if [ -f $PIPELINE_CFG_DIR/surf_disp/$1 ]
-  then
-   source $PIPELINE_CFG_DIR/surf_disp/$1 
-  else
-  echo "config file doesn't exist!"
-  exit 0
-  fi
-fi
- 
-shift 1
 
-prob_seg=$1
-shift 1
+prob_seg=$2
+seg_name=$3
+shift 3
 
 template_only=0
 no_reg=0
-out_dir=surfdisp_singlestruct_$surfmorph_name
+out_dir=surfdisp
+in_subj_xfm=
+
 
 #flag o with argument "o:"
-while getopts "o:tN" options; do
+while getopts "o:tNx:L:T:" options; do
  case $options in
     o ) echo "Using output directory: $OPTARG"
 	out_dir=$OPTARG;;
@@ -80,6 +75,12 @@ while getopts "o:tN" options; do
  	template_only=1;;
     N ) echo "Disabling rigid reg"
 	no_reg=1;;
+    x ) echo "Template to subj linear xfm (to bring surf to subject space): $OPTARG"
+	in_subj_xfm=$OPTARG;;
+    L ) echo " LDDMM options for genPBS: $OPTARG"
+	genpbs_opts=$OPTARG;;
+    T ) echo "iso-threshold value: $OPTARG"
+	isothreshold=$OPTARG;;
     * ) usage
 	exit 0;;
  esac
@@ -101,7 +102,7 @@ mkdir -p $template_dir
 # exit 0
 #fi
 
- struct=seed
+ struct=${seg_name}
 
  template_img_list=$template_dir/template_images.$struct.txt
 
@@ -116,8 +117,8 @@ mkdir -p $template_dir
  fi
  if [ ! -e $ana ]
  then
- echo mri_convert $nii $ana -vs $resample_res $resample_res $resample_res
- mri_convert $nii $ana -vs $resample_res $resample_res $resample_res
+ echo mri_convert $nii $ana #-vs $resample_res $resample_res $resample_res
+ mri_convert $nii $ana #-vs $resample_res $resample_res $resample_res
  fi
 
 
@@ -203,7 +204,7 @@ echo $subj
 
 
 
- struct=seed
+ struct=${seg_name}
 
  nii=$target_dir/$struct.nii.gz
 
@@ -244,7 +245,8 @@ fi
 
 if [ ! -e $ana ]
 then
- mri_convert $reg $ana -vs $resample_res $resample_res $resample_res
+ echo mri_convert $reg $ana #-vs $resample_res $resample_res $resample_res
+ mri_convert $reg $ana #-vs $resample_res $resample_res $resample_res
 fi
 
 else
@@ -326,42 +328,13 @@ fi
  prop_surf_template_norm_nii=$target_dir/propSurface_${struct}_normalized_nii.byu
  prop_surf_subj_nii=$target_dir/propSurface_${struct}_nii_regSubj.byu
 
-#if [ ! -e $disp_csv ]
-#then
-# #now compute surface vector displacements
-#echo GenSurfDisplacementTxt $template_byu_cpp $hmap $disp_csv
-# GenSurfDisplacementTxt $template_byu_cpp $hmap $disp_csv
-#fi
 
 if [ ! -e $prop_surf ]
 then
  #propagate surface
  echo $binpath/TransformSurfaceWithMaps $template_byu_cpp $kimap $prop_surf
  $binpath/TransformSurfaceWithMaps $template_byu_cpp $kimap $prop_surf
-# echo ConvertBYU_BW-CPP $prop_surf $prop_surf `GetImageDims $crop`  #keep in cpp space
-# ConvertBYU_BW-CPP $prop_surf $prop_surf `GetImageDims $crop`  
  fi
-
- #generate inout displacements -- this is done in matlab now..
-
-#if [ ! -e $inout_txt ]
-#then
-# echo "compdisp $template_byu $prop_surf > $inout_txt"
-# compdisp $template_byu $prop_surf > $inout_txt
-#fi
-
-#if [ ! -e $inout_vtk ]
-#then
-# echo CombineBYUandSurfDist $template_byu $inout_txt $inout_vtk
-# CombineBYUandSurfDist $template_byu $inout_txt $inout_vtk
-#fi
-
-#if [ ! -e $disp_vtk ]
-#then
-# sed 's/,/\ /g' $disp_csv > $disp_txt
-# echo ConvertBYUandVectorDataToVTK $template_byu $disp_txt $disp_vtk
-# ConvertBYUandVectorDataToVTK $template_byu $disp_txt $disp_vtk
-#fi
 
 if [ ! -e $prop_surf_template_nii ]
 then
@@ -378,10 +351,20 @@ then
 fi
 
 
+echo runMatlabCmd generateNormalizedDisplacements "'$byu_niispace'" "'$prop_surf_template_nii'" "'$disp_txt'" "'$inout_txt'" "'$prop_surf_template_norm_nii'" "'$disp_vtk'" "'$inout_vtk'"
 runMatlabCmd generateNormalizedDisplacements "'$byu_niispace'" "'$prop_surf_template_nii'" "'$disp_txt'" "'$inout_txt'" "'$prop_surf_template_norm_nii'" "'$disp_vtk'" "'$inout_vtk'"
 
+
+ out_subj_surf=$target_dir/propSurface_${struct}_subjspace_nii.byu
+ out_subj_surf_vtk=$target_dir/subjectSurface_${struct}.vtk
+ out_subj_surf_inout_vtk=$target_dir/subjectSurface_${struct}_inout.vtk
+
+ if [ ! -e "$out_subj_surf_vtk" -o ! -e "$out_subj_surf_inout_vtk" ]
+ then
 #generate vtk files in subj space (needs in_xfm from sub-XX/reg/.. folder):
-#runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_xfm'"  "'$disp_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
+echo runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_subj_xfm'"  "'$disp_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
+runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_subj_xfm'"  "'$disp_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
+fi
 
 warped=$target_dir/${struct}${reg_suffix}ana_crop_warpToTemplate.img 
 padded=$target_dir/${struct}${reg_suffix}ana_crop_warpToTemplate_pad.img 
