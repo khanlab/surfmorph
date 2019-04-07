@@ -254,7 +254,7 @@ else
 
 if [ ! -e $ana ]
 then
- mri_convert $nii $ana -vs $resample_res $resample_res $resample_res
+ mri_convert $nii $ana #-vs $resample_res $resample_res $resample_res
 fi
 
 fi
