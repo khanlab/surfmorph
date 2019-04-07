@@ -370,6 +370,7 @@ then
 fi
 
 
+
 if [ "$no_reg" = "0" -a ! -e $prop_surf_subj_nii ]
 then
  echo runMatlabCmd  transformByuLinearXfm "'$prop_surf_template_nii'" "'$rigid_xfm'" "'$prop_surf_subj_nii'" "1"  # extra 1 is to invert, since the xfm is from subj to template, and we want template to subj
@@ -379,6 +380,8 @@ fi
 
 runMatlabCmd generateNormalizedDisplacements "'$byu_niispace'" "'$prop_surf_template_nii'" "'$disp_txt'" "'$inout_txt'" "'$prop_surf_template_norm_nii'" "'$disp_vtk'" "'$inout_vtk'"
 
+#generate vtk files in subj space (needs in_xfm from sub-XX/reg/.. folder):
+#runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_xfm'"  "'$disp_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
 
 warped=$target_dir/${struct}${reg_suffix}ana_crop_warpToTemplate.img 
 padded=$target_dir/${struct}${reg_suffix}ana_crop_warpToTemplate_pad.img 
@@ -404,6 +407,7 @@ then
  mri_convert $padded $final_nii
 
 fi
+
 
 
 done #subj

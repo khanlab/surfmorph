@@ -16,6 +16,9 @@ function buildTemplate {
        echo fslmerge -t $all_target_segs  $work_folder/iter$((iter-1))/*/*.warpToTemplate.nii.gz
        fslmerge -t $all_target_segs  $work_folder/iter$((iter-1))/*/*.warpToTemplate.nii.gz
 
+	#print out centroids to use as a QC check:
+	fslstats -t $all_target_segs  -C > $work_folder/iter$iter/in_target_segs.centroids.txt
+
 	#average it to create current iteration template
    	echo fslmaths $all_target_segs -Tmean $template_prob_seg
    	fslmaths $all_target_segs -Tmean $template_prob_seg
@@ -69,22 +72,32 @@ n_cpus=8
 reg_init_subj=
 surfmorph_type=striatum_cortical
 in_seg_dir=
+matching_seg=
 
 
-# option 1: have prob. seg in atlas space -> use it to segment targets -- just need to specify atlas & atlas_prob_seg (this is currently implemented)
-# option 2: have pre-computed target segs AND atlas prob seg -- need to specify atlas, atlas_prob_seg, in_seg_dir, and seg_matching_string
-# option 3: have pre-computed tarfget segs, but no atlas prob seg -- need to specify in_seg_dir, and seg_matching_string, then:
-	# transform segs to atlas space, and then generate avg to build prob seg
+
+#TODO:
+# - create mechanism to save built template, and to use existing template - could just use the work/iterX/template folder for this.."
+# - resample arbitrary qMRI on surface - could be participant2 option - may need a matlab script to sample vol on surface (easy)..
+# - support gifti output too
+# - use symlinks to point to final iter folder(s)
+# - allow for higher than 1mm resolution -- just need a higher-res template, and reset RESAMPLE_MM to atlas resolution
+# - multi-structure version
+#   - option A: perform mapping separately -- could use gnu parallel?? - this is easier and better behaved.. separate iterX folders
+#      could use label,num csv file, and use ${label}_iterX folders
+#   - option B: multi-channel reg -- would have large images, harder to estimate mem usage etc..
 
 if [ "$#" -lt 3 ]
 then
-	echo " group1 level imports the data and builds a template for the current iteration, participant1 runs mappings from template to target for current iteration"
-	echo " Start with group1, then run participant1, group1, participant1 until desired number of iterations reached."
+ echo " This app runs LDDMM to generate a cohort-specific template group1 level imports the data and builds a template for the current iteration, participant1 runs mappings from template to target for current iteration"
+ echo " Start with group1, then run participant1, group1, participant1 until desired number of iterations reached."
+ echo ""
+ echo " Segmentations need to be in a BIDS-style anat folder, similar to T1w images (e.g. sub-XX/anat/sub-XX_<matching_seg>.nii.gz)"
  echo "Usage: surfmorph bids_dir output_dir {group1,participant1} <optional arguments>"
  echo ""
  echo " Required arguments:"
  echo "          [--in_seg_dir SEG_DIR]" 
- echo "          [--matching_seg MATCHING_STRING"
+ echo "          [--matching_seg MATCHING_STRING]" 
  echo ""
  echo " Optional arguments:"
  echo "          [--participant_label PARTICIPANT_LABEL [PARTICIPANT_LABEL...]]"

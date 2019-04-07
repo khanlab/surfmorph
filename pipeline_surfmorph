@@ -1,0 +1,33 @@
+#!/bin/bash
+
+if [ "$#" -lt 4 ]
+then
+echo "Usage: $0 <bids> <out_folder> <in_seg_dir> <matching_seg>"
+exit 1
+fi
+
+app_name=surfmorph_dev
+
+bids=$1
+out_folder=$2
+in_seg_dir=$3
+matching_seg=$4
+
+#bids=./bids_clean
+#out_folder=./surfmorph_dev
+#in_seg_dir=~/cfmm-projects/MacDonald/VTASN_3T/derivatives/diffparc_3T_distcorr/
+#matching_seg=space-T1w_seed-CIT168striatum_targets-cortical_inseed
+
+
+#initial job requires linear reg with gnu-parallel, use ShortFat
+jobg1=$(bidsBatch -j ShortFat ${app_name}  ${bids} ${out_folder} group1 --in_seg_dir ${in_seg_dir} --matching_seg ${matching_seg})
+
+jobp1=$(bidsBatch -d afterany:$jobg1 -j ShortSkinny ${app_name}  ${bids} ${out_folder} participant1 --in_seg_dir ${in_seg_dir} --matching_seg ${matching_seg})
+
+jobg1=$(bidsBatch -d afterany:$jobp1 -j ShortSkinny ${app_name}  ${bids} ${out_folder} group1 --in_seg_dir ${in_seg_dir} --matching_seg ${matching_seg})
+
+jobp1=$(bidsBatch -d afterany:$jobg1 -j ShortSkinny ${app_name}  ${bids} ${out_folder} participant1 --in_seg_dir ${in_seg_dir} --matching_seg ${matching_seg})
+
+jobg1=$(bidsBatch -d afterany:$jobp1 -j ShortSkinny ${app_name}  ${bids} ${out_folder} group1 --in_seg_dir ${in_seg_dir} --matching_seg ${matching_seg})
+
+jobp1=$(bidsBatch -d afterany:$jobg1 -j ShortSkinny ${app_name}  ${bids} ${out_folder} participant1 --in_seg_dir ${in_seg_dir} --matching_seg ${matching_seg})
