@@ -684,14 +684,15 @@ done
 		out_subj_dir=$out_folder/$subj_sess_dir/anat
 
 	        #surf parc in T1w space (vtk file, open in slicer or paraview)
-     		vec_mni=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/templateSurface_${seg_name}_disp.vtk
-     		inout_mni=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/templateSurface_${seg_name}_inout.vtk
+     		vec_mni=$work_folder/${seg_name}_iter${MAX_ITER}/${subj_sess_prefix}/templateSurface_${seg_name}_disp.vtk
+     		inout_mni=$work_folder/${seg_name}_iter${MAX_ITER}/${subj_sess_prefix}/templateSurface_${seg_name}_inout.vtk
      
      		out_vec_mni=$out_subj_dir/${subj_sess_prefix}_space-${atlas}_label-${seg_name}_surfmorphvec.vtk
      		out_inout_mni=$out_subj_dir/${subj_sess_prefix}_space-${atlas}_label-${seg_name}_surfmorphinout.vtk
 
-     		inout_subj=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/subjectSurface_${seg_name}_inout.vtk
-     		vtk_subj=$work_folder/surfdisp_singlestruct_$surfmorph_name/${subj_sess_prefix}/subjectSurface_${seg_name}.vtk
+     		inout_subj=$work_folder/${seg_name}_iter${MAX_ITER}/${subj_sess_prefix}/subjectSurface_${seg_name}_inout.vtk
+     		vtk_subj=$work_folder/${seg_name}_iter${MAX_ITER}/${subj_sess_prefix}/subjectSurface_${seg_name}.vtk
+
 		out_inout_subj=$out_subj_dir/${subj_sess_prefix}_space-T1w_label-${seg_name}_surfmorphinout.vtk
      		out_vtk_subj=$out_subj_dir/${subj_sess_prefix}_space-T1w_label-${seg_name}_surf.vtk
 

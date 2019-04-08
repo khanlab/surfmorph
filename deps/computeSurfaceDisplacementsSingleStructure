@@ -362,8 +362,8 @@ runMatlabCmd generateNormalizedDisplacements "'$byu_niispace'" "'$prop_surf_temp
  if [ ! -e "$out_subj_surf_vtk" -o ! -e "$out_subj_surf_inout_vtk" ]
  then
 #generate vtk files in subj space (needs in_xfm from sub-XX/reg/.. folder):
-echo runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_subj_xfm'"  "'$disp_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
-runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_subj_xfm'"  "'$disp_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
+echo runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_subj_xfm'"  "'$inout_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
+runMatlabCmd  genSubjSpaceVTK  "'$prop_surf_template_nii'" "'$in_subj_xfm'"  "'$inout_txt'"  "'$out_subj_surf'" "'$out_subj_surf_vtk'" "'$out_subj_surf_inout_vtk'"
 fi
 
 warped=$target_dir/${struct}${reg_suffix}ana_crop_warpToTemplate.img 
