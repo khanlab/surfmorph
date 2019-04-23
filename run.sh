@@ -78,7 +78,7 @@ surfmorph_type=
 in_seg_dir=
 matching_seg=
 seg_name=
-
+skip_bet=0
 
 #TODO:
 # - create mechanism to save built template, and to use existing template - could just use the work/iterX/template folder for this.."
@@ -107,6 +107,7 @@ then
  echo " Optional arguments:"
  echo "          [--participant_label PARTICIPANT_LABEL [PARTICIPANT_LABEL...]]"
  echo "          [--matching_T1w MATCHING_STRING"
+ echo "          [--skip_bet]"
  echo ""
  echo "          [--seg_label LABEL_NUMBER (default: will binarize all non-zero labels from image)"
  echo ""
@@ -288,6 +289,19 @@ while :; do
           ;;
 
 
+       --skip_bet )       
+          skip_bet=1 
+	  echo "skipping bet"
+	  ;;
+
+     --surfmorph_type=?*)
+          surfmorph_type=${1#*=} # delete everything up to "=" and assign the remainder.
+            ;;
+          --surfmorph_type=)         # handle the case of an empty --participant=
+         die 'error: "--surfmorph_type" requires a non-empty option argument.'
+          ;;
+
+
 
 
       -?*)
@@ -463,6 +477,9 @@ subj_sess_prefix_reg=""
 
 
 	#import T1 from BIDS
+	if [ "$skip_bet" = "0" ]
+	then
+
 	if [ ! -e $work_folder/$subj_sess_prefix/t1/t1.nii.gz ]
 	then
 
@@ -486,6 +503,31 @@ subj_sess_prefix_reg=""
 	else
 	 echo --- Skipping importT1 ---
 	fi
+
+	fi
+
+	if [ "$skip_bet" = "1" ]
+	then
+		#import t1.brain.nii.gz
+	if [ ! -e $work_folder/$subj_sess_prefix/t1/t1.brain.nii.gz ]
+	then
+
+		N_t1w=`eval ls $in_bids/$subj_sess_dir/anat/${subj_sess_prefix}${searchstring_t1w} | wc -l`
+		in_t1w=`eval ls $in_bids/$subj_sess_dir/anat/${subj_sess_prefix}${searchstring_t1w} | head -n 1`
+
+		if [ "$N_t1w" = 0 ]
+		then
+	
+			echo "--- No T1w images found in $in_bids/$subj_sess_dir/anat ---"
+			continue;
+		fi
+
+		mkdir -p $work_folder/$subj_sess_prefix/t1
+
+		cp -v $in_t1w $work_folder/$subj_sess_prefix/t1/t1.brain.nii.gz
+
+	fi
+
 
 
 	if [ "$use_atlasseg" = "0" ]

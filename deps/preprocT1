@@ -45,13 +45,13 @@ t1=$t1_dir/t1.nii.gz
 bet_t1=$t1_dir/t1.brain.nii.gz
 brainmask=$t1_dir/brainmask.nii.gz
 
-if [ -e $brainmask ]
+if [ -e $brainmask -a ! -e $bet_t1 ]
 then
  echo fslmaths $t1 -mas $brainmask $bet_t1
  fslmaths $t1 -mas $brainmask $bet_t1
 
+fi
 
-else
 
 if [ ! -e $brainmask ]
 then
@@ -64,7 +64,7 @@ fslmaths $bet_t1 -bin $brainmask
 fi
 
 
-fi
+
 
 norm_t1=$t1_dir/t1.brain.inorm.nii.gz
 if [ ! -e $norm_t1 ]
