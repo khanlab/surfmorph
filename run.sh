@@ -527,7 +527,7 @@ subj_sess_prefix_reg=""
 		cp -v $in_t1w $work_folder/$subj_sess_prefix/t1/t1.brain.nii.gz
 
 	fi
-
+	fi
 
 
 	if [ "$use_atlasseg" = "0" ]
