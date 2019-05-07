@@ -18,9 +18,9 @@ ENV PIPELINE_CFG_DIR /diffparcellate/cfg
 
 
 #install MCR
-RUN bash /diffparcellate/deps/05.install_MCR.sh /opt v92 R2017a
-ENV MCRROOT /opt/mcr/v92
-ENV MCRBINS /diffparcellate/mcr/v92
+RUN bash /diffparcellate/deps/05.install_MCR.sh /opt v95 R2018b
+ENV MCRROOT /opt/mcr/v95
+ENV MCRBINS /diffparcellate/mcr/v95
 
 
 

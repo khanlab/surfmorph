@@ -1,10 +1,12 @@
 #!/bin/bash
 
-version=v92
+version=v95
 
 mcr_dir=`dirname $0`
 matlab_dir=`realpath $mcr_dir/../matlab`
 out_dir=$mcr_dir/$version
+
+mkdir -p $out_dir
 
 for m in `ls $matlab_dir/*.m`
 do
